@@ -30,6 +30,7 @@ export default function Home() {
     entry: LUNCH_DEFAULTS.entry as number | string,
     tp: LUNCH_DEFAULTS.tp as number | string,
     sl: LUNCH_DEFAULTS.sl as number | string,
+    noSL: false,
     entryEnd: LUNCH_DEFAULTS.entryEnd,
     backstop: LUNCH_DEFAULTS.backstop,
     ambiguous: 'conservative',
@@ -40,6 +41,8 @@ export default function Home() {
     entryDev3: LUNCH_DEFAULTS.entryDev3 as number | string,
     tp2: LUNCH_DEFAULTS.tp2 as number | string,
     tp3: LUNCH_DEFAULTS.tp3 as number | string,
+    sl2: LUNCH_DEFAULTS.sl2 as number | string,
+    sl3: LUNCH_DEFAULTS.sl3 as number | string,
   });
 
   const [results, setResults] = useState<BacktestResult | null>(null);
@@ -102,6 +105,7 @@ export default function Home() {
       entryDev: Number(params.entry) || 0,
       tp: Number(params.tp) || 0,
       sl: Number(params.sl) || 0,
+      noSL: params.noSL,
       entryEndMin: parseTimeStr(params.entryEnd) || (session === 'lunch' ? 685 : 295),
       backstopMin: parseTimeStr(params.backstop) || (session === 'lunch' ? 705 : 300),
       ambiguous: params.ambiguous as 'conservative' | 'optimistic',
@@ -112,6 +116,8 @@ export default function Home() {
       entryDev3: Number(params.entryDev3) || 0,
       tp2: Number(params.tp2) || 0,
       tp3: Number(params.tp3) || 0,
+      sl2: Number(params.sl2) || 0,
+      sl3: Number(params.sl3) || 0,
     };
     const r = runBacktestEngine(session, backParams, filteredCash, ohlcData.barsByTradingDay, ohlcData.sortedTradingDays);
     setResults(r);
@@ -199,6 +205,8 @@ export default function Home() {
               entryDev3: def.entryDev3,
               tp2: def.tp2,
               tp3: def.tp3,
+              sl2: def.sl2,
+              sl3: def.sl3,
             }));
           }}
           params={params}

@@ -32,8 +32,8 @@ export interface Trade {
   pnl: number;
   exitReason: string;
   cashRef: number;
-  maxDistFromCash: number;    // max distance of spread from cash during this trade's session
-  tranche?: string;           // E1, E2, E3 label for scaled entry trades
+  maxDistFromCash: number;
+  tranche?: string;
 }
 
 export interface EquityPoint {
@@ -51,17 +51,20 @@ export interface BacktestParams {
   entryDev: number;
   tp: number;
   sl: number;
+  noSL: boolean;              // disable SL, purely time-based exits
   entryEndMin: number;
   backstopMin: number;
   ambiguous: 'conservative' | 'optimistic';
   allowReentry: boolean;
-  // E1/E2/E3 scaled entries
+  // E1/E2/E3 scaled entries — each with own SL
   enableE2: boolean;
   enableE3: boolean;
   entryDev2: number;
   entryDev3: number;
   tp2: number;
   tp3: number;
+  sl2: number;
+  sl3: number;
 }
 
 export interface BacktestStats {
@@ -85,6 +88,12 @@ export interface BacktestStats {
   maxDistMedian: string;
   maxDistP30: string;
   maxDistP10: string;
+  // Tranche entry counts
+  e1Count: number;
+  e2Count: number;
+  e3Count: number;
+  enableE2: boolean;
+  enableE3: boolean;
 }
 
 export interface BacktestResult {
@@ -107,6 +116,8 @@ export const LUNCH_DEFAULTS = {
   entryDev3: 65,
   tp2: 35,
   tp3: 50,
+  sl2: 35,
+  sl3: 15,
 };
 
 export const NIGHT_DEFAULTS = {
@@ -119,4 +130,6 @@ export const NIGHT_DEFAULTS = {
   entryDev3: 160,
   tp2: 200,
   tp3: 250,
+  sl2: 160,
+  sl3: 120,
 };

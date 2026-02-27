@@ -9,6 +9,7 @@ interface ParamsPanelProps {
     entry: number | string;
     tp: number | string;
     sl: number | string;
+    noSL: boolean;
     entryEnd: string;
     backstop: string;
     ambiguous: string;
@@ -19,6 +20,8 @@ interface ParamsPanelProps {
     entryDev3: number | string;
     tp2: number | string;
     tp3: number | string;
+    sl2: number | string;
+    sl3: number | string;
   };
   onParamChange: (key: string, value: unknown) => void;
   onRun: () => void;
@@ -38,6 +41,8 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
     onParamChange('entryDev3', def.entryDev3);
     onParamChange('tp2', def.tp2);
     onParamChange('tp3', def.tp3);
+    onParamChange('sl2', def.sl2);
+    onParamChange('sl3', def.sl3);
   };
 
   return (
@@ -73,7 +78,8 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
           <div className="text-[10px] text-white/30 uppercase tracking-wider font-semibold mb-3">E1 Entry & Exit</div>
           <ParamInput label="Entry Deviation" value={params.entry} unit="pts" onChange={v => onParamChange('entry', v)} />
           <ParamInput label="Take Profit" value={params.tp} unit="pts" onChange={v => onParamChange('tp', v)} />
-          <ParamInput label="Stop Loss" value={params.sl} unit="pts" onChange={v => onParamChange('sl', v)} />
+          <ParamInput label="Stop Loss" value={params.sl} unit="pts" onChange={v => onParamChange('sl', v)} disabled={params.noSL} />
+          <Toggle label="No SL, purely time based" enabled={params.noSL} onToggle={() => onParamChange('noSL', !params.noSL)} />
 
           {/* E2 Section */}
           <div className="mt-4 pt-3 border-t border-white/5">
@@ -84,6 +90,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
               <div className="ml-1 pl-3 border-l border-emerald-500/20">
                 <ParamInput label="Entry Dev E2" value={params.entryDev2} unit="pts" onChange={v => onParamChange('entryDev2', v)} />
                 <ParamInput label="Take Profit E2" value={params.tp2} unit="pts" onChange={v => onParamChange('tp2', v)} />
+                <ParamInput label="Stop Loss E2" value={params.sl2} unit="pts" onChange={v => onParamChange('sl2', v)} disabled={params.noSL} />
               </div>
             )}
           </div>
@@ -97,6 +104,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
               <div className="ml-1 pl-3 border-l border-amber-500/20">
                 <ParamInput label="Entry Dev E3" value={params.entryDev3} unit="pts" onChange={v => onParamChange('entryDev3', v)} />
                 <ParamInput label="Take Profit E3" value={params.tp3} unit="pts" onChange={v => onParamChange('tp3', v)} />
+                <ParamInput label="Stop Loss E3" value={params.sl3} unit="pts" onChange={v => onParamChange('sl3', v)} disabled={params.noSL} />
               </div>
             )}
           </div>
@@ -126,9 +134,9 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
           <div className="mt-4 pt-3 border-t border-white/5">
             <div className="text-[10px] text-white/30 uppercase tracking-wider font-semibold mb-2">Entry / Exit Criteria</div>
             <div className="text-[11px] text-white/40 font-mono space-y-1">
-              <div><span className="text-emerald-400/70">E1</span> entry: cash ± {String(params.entry)} → TP +{String(params.tp)} / SL −{String(params.sl)}</div>
-              {params.enableE2 && <div><span className="text-blue-400/70">E2</span> entry: cash ± {String(params.entryDev2)} → TP +{String(params.tp2)} / SL shared</div>}
-              {params.enableE3 && params.enableE2 && <div><span className="text-amber-400/70">E3</span> entry: cash ± {String(params.entryDev3)} → TP +{String(params.tp3)} / SL shared</div>}
+              <div><span className="text-emerald-400/70">E1</span> entry: cash ± {String(params.entry)} → TP +{String(params.tp)} / {params.noSL ? <span className="text-amber-400/70">no SL</span> : <>SL −{String(params.sl)}</>}</div>
+              {params.enableE2 && <div><span className="text-blue-400/70">E2</span> entry: cash ± {String(params.entryDev2)} → TP +{String(params.tp2)} / {params.noSL ? <span className="text-amber-400/70">no SL</span> : <>SL −{String(params.sl2)}</>}</div>}
+              {params.enableE3 && params.enableE2 && <div><span className="text-amber-400/70">E3</span> entry: cash ± {String(params.entryDev3)} → TP +{String(params.tp3)} / {params.noSL ? <span className="text-amber-400/70">no SL</span> : <>SL −{String(params.sl3)}</>}</div>}
             </div>
           </div>
         </div>
@@ -146,15 +154,16 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
   );
 }
 
-function ParamInput({ label, value, unit, onChange }: { label: string; value: number | string; unit: string; onChange: (v: number | string) => void }) {
+function ParamInput({ label, value, unit, onChange, disabled }: { label: string; value: number | string; unit: string; onChange: (v: number | string) => void; disabled?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 mb-2">
+    <div className={`flex items-center gap-2.5 mb-2 ${disabled ? 'opacity-40' : ''}`}>
       <label className="text-xs text-white/45 w-[140px] shrink-0">{label}</label>
       <input
         type="number"
-        className="w-20 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-white/80 text-sm font-mono outline-none focus:border-emerald-500/40 transition-colors"
+        className="w-20 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-md text-white/80 text-sm font-mono outline-none focus:border-emerald-500/40 transition-colors disabled:cursor-not-allowed"
         value={value}
         onChange={e => onChange(e.target.value === '' ? '' : parseFloat(e.target.value))}
+        disabled={disabled}
       />
       <span className="text-[10px] text-white/25">{unit}</span>
     </div>

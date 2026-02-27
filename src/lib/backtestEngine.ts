@@ -32,8 +32,8 @@ export function runBacktestEngine(
   barsByTradingDay: Record<string, Bar[]>,
   sortedTradingDays: string[]
 ): BacktestResult {
-  const { entryDev, tp, sl, entryEndMin, backstopMin, ambiguous, allowReentry,
-          enableE2, enableE3, entryDev2, entryDev3, tp2, tp3 } = params;
+  const { entryDev, tp, sl, noSL, entryEndMin, backstopMin, ambiguous, allowReentry,
+          enableE2, enableE3, entryDev2, entryDev3, tp2, tp3, sl2, sl3 } = params;
 
   // Cash lookup
   const cashMap: Record<string, number> = {};
@@ -247,14 +247,25 @@ export function runBacktestEngine(
           continue;
         }
 
-        // SL check: shared SL from E1 entry price
-        const e1 = tranches.find(t => t.level === 1);
-        if (e1) {
-          const slPx = e1.direction === 1 ? e1.entryPrice - sl : e1.entryPrice + sl;
-          const slHit = e1.direction === 1 ? bar.low <= slPx : bar.high >= slPx;
-          if (slHit) {
-            closeAllTranches(slPx, bar.timestamp, 'SL');
-            debugLog.push('  <span class="dbg-exit-sl">SL ALL @ ' + Math.round(slPx * 10) / 10 + '</span>');
+        // SL check per tranche (individual SLs) — skip if noSL
+        if (!noSL) {
+          const slMap: Record<number, number> = { 1: sl, 2: sl2, 3: sl3 };
+          let allStopped = false;
+          stillOpen.forEach(t => {
+            if (t.closed) return;
+            const trancheSL = slMap[t.level] || sl;
+            const slPx = t.direction === 1 ? t.entryPrice - trancheSL : t.entryPrice + trancheSL;
+            const slHit = t.direction === 1 ? bar.low <= slPx : bar.high >= slPx;
+            if (slHit) {
+              closeTranche(t, slPx, bar.timestamp, 'SL');
+              debugLog.push('  <span class="dbg-exit-sl">E' + t.level + ' SL @ ' + Math.round(slPx * 10) / 10 + ' pnl=' + (t.pnl! > 0 ? '+' : '') + t.pnl + '</span>');
+            }
+          });
+          // If all tranches closed by SL, handle re-entry or break
+          if (tranches.filter(t => !t.closed).length === 0 && tranches.length > 0) {
+            allStopped = true;
+          }
+          if (allStopped) {
             if (allowReentry && inEntryWindow) { posDirection = null; e1Triggered = false; e2Triggered = false; e3Triggered = false; continue; }
             break;
           }
@@ -349,7 +360,7 @@ export function runBacktestEngine(
           const tpPx = entryDir === 1 ? entryPx + tp : entryPx - tp;
           const slPx = entryDir === 1 ? entryPx - sl : entryPx + sl;
           const tpHit = entryDir === 1 ? bar.high >= tpPx : bar.low <= tpPx;
-          const slHit = entryDir === 1 ? bar.low <= slPx : bar.high >= slPx;
+          const slHit = noSL ? false : (entryDir === 1 ? bar.low <= slPx : bar.high >= slPx);
 
           if (isLast) {
             if (tpHit && !slHit) closeTrade(tpPx, bar.timestamp, 'TP');
@@ -368,7 +379,7 @@ export function runBacktestEngine(
         const tpPx = dir === 1 ? position.entryPrice + tp : position.entryPrice - tp;
         const slPx = dir === 1 ? position.entryPrice - sl : position.entryPrice + sl;
         const tpHit = dir === 1 ? bar.high >= tpPx : bar.low <= tpPx;
-        const slHit = dir === 1 ? bar.low <= slPx : bar.high >= slPx;
+        const slHit = noSL ? false : (dir === 1 ? bar.low <= slPx : bar.high >= slPx);
 
         if (isLast) {
           if (tpHit && !slHit) closeTrade(tpPx, bar.timestamp, 'TP');
@@ -418,6 +429,11 @@ export function runBacktestEngine(
   const maxDistP30 = percentile(allMaxDists, 30);
   const maxDistP10 = percentile(allMaxDists, 10);
 
+  // Tranche entry counts
+  const e1Count = trades.filter(t => !t.tranche || t.tranche === 'E1').length;
+  const e2Count = trades.filter(t => t.tranche === 'E2').length;
+  const e3Count = trades.filter(t => t.tranche === 'E3').length;
+
   return {
     trades,
     equity,
@@ -443,6 +459,11 @@ export function runBacktestEngine(
       maxDistMedian: maxDistMedian.toFixed(1),
       maxDistP30: maxDistP30.toFixed(1),
       maxDistP10: maxDistP10.toFixed(1),
+      e1Count,
+      e2Count,
+      e3Count,
+      enableE2,
+      enableE3,
     },
   };
 }
