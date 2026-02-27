@@ -176,6 +176,7 @@ export function runBacktestEngine(
       const tranches: Tranche[] = [];
       let posDirection: 1 | -1 | null = null;
       let e1Triggered = false, e2Triggered = false, e3Triggered = false;
+      let slTriggered = false; // once any SL fires, no more entries for the day
 
       function closeAllTranches(exitPrice: number, exitTime: Date, reason: string) {
         tranches.filter(t => !t.closed).forEach(t => {
@@ -203,8 +204,8 @@ export function runBacktestEngine(
         const inEntryWindow = bar.timestamp <= entryWindowEnd;
         const openTranches = tranches.filter(t => !t.closed);
 
-        // Check for new tranche entries (within entry window)
-        if (inEntryWindow) {
+        // Check for new tranche entries (within entry window, blocked after any SL)
+        if (inEntryWindow && !slTriggered) {
           if (!e1Triggered) {
             if (bar.low <= longE1) {
               posDirection = 1; e1Triggered = true;
@@ -243,7 +244,7 @@ export function runBacktestEngine(
         // Check exits on open tranches
         const stillOpen = tranches.filter(t => !t.closed);
         if (stillOpen.length === 0) {
-          if (!inEntryWindow) break;
+          if (!inEntryWindow || slTriggered) break;
           if (allowReentry && tranches.length > 0) {
             posDirection = null; e1Triggered = false; e2Triggered = false; e3Triggered = false;
           }
@@ -253,7 +254,7 @@ export function runBacktestEngine(
         // SL check per tranche (individual SLs) — skip if noSL
         if (!noSL) {
           const slMap: Record<number, number> = { 1: sl, 2: sl2, 3: sl3 };
-          let allStopped = false;
+          let anySLHit = false;
           stillOpen.forEach(t => {
             if (t.closed) return;
             const trancheSL = slMap[t.level] || sl;
@@ -262,15 +263,14 @@ export function runBacktestEngine(
             if (slHit) {
               closeTranche(t, slPx, bar.timestamp, 'SL');
               debugLog.push('  <span class="dbg-exit-sl">E' + t.level + ' SL @ ' + Math.round(slPx * 10) / 10 + ' pnl=' + (t.pnl! > 0 ? '+' : '') + t.pnl + '</span>');
+              anySLHit = true;
             }
           });
-          // If all tranches closed by SL, handle re-entry or break
-          if (tranches.filter(t => !t.closed).length === 0 && tranches.length > 0) {
-            allStopped = true;
-          }
-          if (allStopped) {
-            if (allowReentry && inEntryWindow) { posDirection = null; e1Triggered = false; e2Triggered = false; e3Triggered = false; continue; }
-            break;
+          // Once any SL fires, no more entries for the rest of this trading day
+          if (anySLHit) {
+            slTriggered = true;
+            // If all tranches now closed, done for the day
+            if (tranches.filter(t => !t.closed).length === 0) break;
           }
         }
 
@@ -367,14 +367,14 @@ export function runBacktestEngine(
 
           if (isLast) {
             if (tpHit && !slHit) closeTrade(tpPx, bar.timestamp, 'TP');
-            else if (slHit && !tpHit) closeTrade(slPx, bar.timestamp, 'SL');
-            else if (tpHit && slHit) closeTrade(ambiguous === 'conservative' ? slPx : tpPx, bar.timestamp, (ambiguous === 'conservative' ? 'SL' : 'TP') + ' (ambig)');
+            else if (slHit && !tpHit) { closeTrade(slPx, bar.timestamp, 'SL'); break; }
+            else if (tpHit && slHit) { closeTrade(ambiguous === 'conservative' ? slPx : tpPx, bar.timestamp, (ambiguous === 'conservative' ? 'SL' : 'TP') + ' (ambig)'); if (ambiguous === 'conservative') break; }
             else closeTrade(bar.close, bar.timestamp, 'TIME');
             if (allowReentry) continue; else break;
           }
-          if (tpHit && slHit) { closeTrade(ambiguous === 'conservative' ? slPx : tpPx, bar.timestamp, (ambiguous === 'conservative' ? 'SL' : 'TP') + ' (ambig)'); if (allowReentry) continue; else break; }
+          if (tpHit && slHit) { closeTrade(ambiguous === 'conservative' ? slPx : tpPx, bar.timestamp, (ambiguous === 'conservative' ? 'SL' : 'TP') + ' (ambig)'); if (ambiguous === 'conservative') break; if (allowReentry) continue; else break; }
           if (tpHit) { closeTrade(tpPx, bar.timestamp, 'TP'); if (allowReentry) continue; else break; }
-          if (slHit) { closeTrade(slPx, bar.timestamp, 'SL'); if (allowReentry) continue; else break; }
+          if (slHit) { closeTrade(slPx, bar.timestamp, 'SL'); break; }
           continue;
         }
 
@@ -391,9 +391,9 @@ export function runBacktestEngine(
           else closeTrade(bar.close, bar.timestamp, 'TIME');
           break;
         }
-        if (tpHit && slHit) { closeTrade(ambiguous === 'conservative' ? slPx : tpPx, bar.timestamp, (ambiguous === 'conservative' ? 'SL' : 'TP') + ' (ambig)'); if (allowReentry && inEntryWindow) continue; else break; }
+        if (tpHit && slHit) { closeTrade(ambiguous === 'conservative' ? slPx : tpPx, bar.timestamp, (ambiguous === 'conservative' ? 'SL' : 'TP') + ' (ambig)'); if (ambiguous === 'conservative') break; if (allowReentry && inEntryWindow) continue; else break; }
         if (tpHit) { closeTrade(tpPx, bar.timestamp, 'TP'); if (allowReentry && inEntryWindow) continue; else break; }
-        if (slHit) { closeTrade(slPx, bar.timestamp, 'SL'); if (allowReentry && inEntryWindow) continue; else break; }
+        if (slHit) { closeTrade(slPx, bar.timestamp, 'SL'); break; }
       }
 
       if (position) {
