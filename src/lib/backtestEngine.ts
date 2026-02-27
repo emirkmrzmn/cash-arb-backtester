@@ -244,6 +244,9 @@ export function runBacktestEngine(
         const stillOpen = tranches.filter(t => !t.closed);
         if (stillOpen.length === 0) {
           if (!inEntryWindow) break;
+          if (allowReentry && tranches.length > 0) {
+            posDirection = null; e1Triggered = false; e2Triggered = false; e3Triggered = false;
+          }
           continue;
         }
 
