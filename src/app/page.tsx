@@ -57,9 +57,9 @@ export default function Home() {
   const handleRun = useCallback(() => {
     if (!ohlcData || !cashData) return;
     const backParams = {
-      entryDev: params.entry,
-      tp: params.tp,
-      sl: params.sl,
+      entryDev: Number(params.entry) || 0,
+      tp: Number(params.tp) || 0,
+      sl: Number(params.sl) || 0,
       entryEndMin: parseTimeStr(params.entryEnd) || (session === 'lunch' ? 685 : 295),
       backstopMin: parseTimeStr(params.backstop) || (session === 'lunch' ? 705 : 300),
       ambiguous: params.ambiguous as 'conservative' | 'optimistic',

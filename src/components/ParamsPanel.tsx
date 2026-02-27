@@ -6,9 +6,9 @@ interface ParamsPanelProps {
   session: Session;
   onSessionChange: (s: Session) => void;
   params: {
-    entry: number;
-    tp: number;
-    sl: number;
+    entry: number | string;
+    tp: number | string;
+    sl: number | string;
     entryEnd: string;
     backstop: string;
     ambiguous: string;
@@ -115,7 +115,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
   );
 }
 
-function ParamInput({ label, value, unit, onChange }: { label: string; value: number; unit: string; onChange: (v: number) => void }) {
+function ParamInput({ label, value, unit, onChange }: { label: string; value: number | string; unit: string; onChange: (v: number | string) => void }) {
   return (
     <div className="flex items-center gap-2.5 mb-2">
       <label className="text-xs text-white/45 w-[140px] shrink-0">{label}</label>
@@ -123,7 +123,7 @@ function ParamInput({ label, value, unit, onChange }: { label: string; value: nu
         type="number"
         className="w-20 px-2.5 py-1 bg-white/5 border border-white/10 rounded text-white/80 text-sm font-mono outline-none focus:border-emerald-500/40"
         value={value}
-        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+        onChange={e => onChange(e.target.value === '' ? '' : parseFloat(e.target.value))}
       />
       <span className="text-[10px] text-white/25">{unit}</span>
     </div>
