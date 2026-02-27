@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import FileUpload from '@/components/FileUpload';
 import ParamsPanel from '@/components/ParamsPanel';
 import StatsGrid from '@/components/StatsGrid';
 import EquityChart from '@/components/EquityChart';
 import TradeLog from '@/components/TradeLog';
 import DebugLog from '@/components/DebugLog';
+import DateRangePicker from '@/components/DateRangePicker';
 import { readXlsx, parseOhlc, parseCash, ParsedData, ParsedCash } from '@/lib/dataParser';
 import { runBacktestEngine } from '@/lib/backtestEngine';
-import { parseTimeStr, fmtDate, fmtDateTime } from '@/lib/dateUtils';
-import { Session, BacktestResult, LUNCH_DEFAULTS, NIGHT_DEFAULTS } from '@/lib/types';
+import { parseTimeStr, fmtDate, fmtDateTime, dateKey } from '@/lib/dateUtils';
+import { Session, BacktestResult, LUNCH_DEFAULTS, NIGHT_DEFAULTS, CashRef } from '@/lib/types';
 
 type ViewTab = 'chart' | 'log' | 'debug';
 
@@ -20,20 +21,38 @@ export default function Home() {
   const [ohlcFileName, setOhlcFileName] = useState('');
   const [cashFileName, setCashFileName] = useState('');
 
+  // Date range filter
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+
   const [session, setSession] = useState<Session>('lunch');
   const [params, setParams] = useState({
-    entry: LUNCH_DEFAULTS.entry,
-    tp: LUNCH_DEFAULTS.tp,
-    sl: LUNCH_DEFAULTS.sl,
+    entry: LUNCH_DEFAULTS.entry as number | string,
+    tp: LUNCH_DEFAULTS.tp as number | string,
+    sl: LUNCH_DEFAULTS.sl as number | string,
     entryEnd: LUNCH_DEFAULTS.entryEnd,
     backstop: LUNCH_DEFAULTS.backstop,
     ambiguous: 'conservative',
     allowReentry: false,
+    enableE2: false,
+    enableE3: false,
+    entryDev2: LUNCH_DEFAULTS.entryDev2 as number | string,
+    entryDev3: LUNCH_DEFAULTS.entryDev3 as number | string,
+    tp2: LUNCH_DEFAULTS.tp2 as number | string,
+    tp3: LUNCH_DEFAULTS.tp3 as number | string,
   });
 
   const [results, setResults] = useState<BacktestResult | null>(null);
   const [activeView, setActiveView] = useState<ViewTab>('chart');
 
+  // Compute date bounds from cash data
+  const dateBounds = useMemo(() => {
+    if (!cashData?.cashParsed.length) return null;
+    const dates = cashData.cashParsed.map(c => dateKey(c.date)).sort();
+    return { min: dates[0], max: dates[dates.length - 1] };
+  }, [cashData]);
+
+  // Initialize date range when cash data loads
   const handleOhlcFile = useCallback(async (file: File) => {
     const raw = await readXlsx(file);
     const parsed = parseOhlc(raw);
@@ -48,14 +67,37 @@ export default function Home() {
     setCashData(parsed);
     setCashFileName(file.name);
     setResults(null);
+    // Set date range to full
+    if (parsed.cashParsed.length) {
+      const dates = parsed.cashParsed.map(c => dateKey(c.date)).sort();
+      setDateStart(dates[0]);
+      setDateEnd(dates[dates.length - 1]);
+    }
   }, []);
 
   const handleParamChange = useCallback((key: string, value: unknown) => {
-    setParams(prev => ({ ...prev, [key]: value }));
+    setParams(prev => {
+      const next = { ...prev, [key]: value };
+      // If disabling E2, also disable E3
+      if (key === 'enableE2' && !value) {
+        next.enableE3 = false;
+      }
+      return next;
+    });
   }, []);
 
+  // Filter cash data by date range
+  const filteredCash = useMemo((): CashRef[] => {
+    if (!cashData?.cashParsed.length) return [];
+    if (!dateStart || !dateEnd) return cashData.cashParsed;
+    return cashData.cashParsed.filter(c => {
+      const k = dateKey(c.date);
+      return k >= dateStart && k <= dateEnd;
+    });
+  }, [cashData, dateStart, dateEnd]);
+
   const handleRun = useCallback(() => {
-    if (!ohlcData || !cashData) return;
+    if (!ohlcData || !filteredCash.length) return;
     const backParams = {
       entryDev: Number(params.entry) || 0,
       tp: Number(params.tp) || 0,
@@ -64,33 +106,31 @@ export default function Home() {
       backstopMin: parseTimeStr(params.backstop) || (session === 'lunch' ? 705 : 300),
       ambiguous: params.ambiguous as 'conservative' | 'optimistic',
       allowReentry: params.allowReentry,
+      enableE2: params.enableE2,
+      enableE3: params.enableE3,
+      entryDev2: Number(params.entryDev2) || 0,
+      entryDev3: Number(params.entryDev3) || 0,
+      tp2: Number(params.tp2) || 0,
+      tp3: Number(params.tp3) || 0,
     };
-    const r = runBacktestEngine(session, backParams, cashData.cashParsed, ohlcData.barsByTradingDay, ohlcData.sortedTradingDays);
+    const r = runBacktestEngine(session, backParams, filteredCash, ohlcData.barsByTradingDay, ohlcData.sortedTradingDays);
     setResults(r);
     setActiveView('chart');
-  }, [ohlcData, cashData, params, session]);
+  }, [ohlcData, filteredCash, params, session]);
 
-  const canRun = !!(ohlcData?.ohlcParsed.length && cashData?.cashParsed.length);
+  const canRun = !!(ohlcData?.ohlcParsed.length && filteredCash.length);
 
   // Badge info
-  const ohlcInfo = ohlcData?.ohlcParsed.length
-    ? `${ohlcData.ohlcParsed.length.toLocaleString()} bars`
-    : '';
-  const tdInfo = ohlcData?.sortedTradingDays.length
-    ? `${ohlcData.sortedTradingDays.length} trading days`
-    : '';
+  const ohlcInfo = ohlcData?.ohlcParsed.length ? `${ohlcData.ohlcParsed.length.toLocaleString()} bars` : '';
+  const tdInfo = ohlcData?.sortedTradingDays.length ? `${ohlcData.sortedTradingDays.length} trading days` : '';
   const ohlcRange = ohlcData?.ohlcParsed.length
-    ? `${fmtDateTime(ohlcData.ohlcParsed[0].timestamp)} → ${fmtDateTime(ohlcData.ohlcParsed[ohlcData.ohlcParsed.length - 1].timestamp)} (UTC+8)`
-    : '';
-  const cashInfo = cashData?.cashParsed.length
-    ? `${cashData.cashParsed.length} days`
-    : '';
+    ? `${fmtDateTime(ohlcData.ohlcParsed[0].timestamp)} → ${fmtDateTime(ohlcData.ohlcParsed[ohlcData.ohlcParsed.length - 1].timestamp)} (UTC+8)` : '';
+  const cashInfo = cashData?.cashParsed.length ? `${cashData.cashParsed.length} days` : '';
   const cashRange = cashData?.cashParsed.length
-    ? `${fmtDate(cashData.cashParsed[0].date)} → ${fmtDate(cashData.cashParsed[cashData.cashParsed.length - 1].date)}`
-    : '';
+    ? `${fmtDate(cashData.cashParsed[0].date)} → ${fmtDate(cashData.cashParsed[cashData.cashParsed.length - 1].date)}` : '';
 
   return (
-    <div>
+    <div className="min-h-screen">
       {/* Header */}
       <div className="px-8 py-4 border-b border-white/[0.06] flex items-center justify-between">
         <div>
@@ -99,7 +139,7 @@ export default function Home() {
           </h1>
           <div className="text-xs text-white/30 mt-0.5">Topix / Nikkei 225 spread — mean reversion simulator</div>
         </div>
-        <div className="flex gap-2.5 flex-wrap">
+        <div className="flex gap-2 flex-wrap justify-end">
           {ohlcInfo && <Badge text={`OHLC: ${ohlcInfo}`} />}
           {tdInfo && <Badge text={tdInfo} />}
           {ohlcRange && <Badge text={ohlcRange} />}
@@ -109,9 +149,9 @@ export default function Home() {
       </div>
 
       {/* Main content */}
-      <div className="max-w-[1100px] mx-auto px-8 py-6">
+      <div className="max-w-[1200px] mx-auto px-8 py-6">
         {/* File uploads */}
-        <div className="grid grid-cols-2 gap-3.5 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-5">
           <FileUpload
             label="OHLC Spread Data"
             hint="XLSX — Timestamp (UTC), Open, High, Low, Close"
@@ -128,10 +168,39 @@ export default function Home() {
           />
         </div>
 
+        {/* Date Range Picker */}
+        {dateBounds && (
+          <DateRangePicker
+            minDate={dateBounds.min}
+            maxDate={dateBounds.max}
+            startDate={dateStart}
+            endDate={dateEnd}
+            onStartChange={setDateStart}
+            onEndChange={setDateEnd}
+            onReset={() => { setDateStart(dateBounds.min); setDateEnd(dateBounds.max); }}
+          />
+        )}
+
         {/* Params */}
         <ParamsPanel
           session={session}
-          onSessionChange={s => { setSession(s); setResults(null); }}
+          onSessionChange={s => {
+            setSession(s);
+            setResults(null);
+            const def = s === 'lunch' ? LUNCH_DEFAULTS : NIGHT_DEFAULTS;
+            setParams(prev => ({
+              ...prev,
+              entry: def.entry,
+              tp: def.tp,
+              sl: def.sl,
+              entryEnd: def.entryEnd,
+              backstop: def.backstop,
+              entryDev2: def.entryDev2,
+              entryDev3: def.entryDev3,
+              tp2: def.tp2,
+              tp3: def.tp3,
+            }));
+          }}
           params={params}
           onParamChange={handleParamChange}
           onRun={handleRun}
@@ -140,7 +209,7 @@ export default function Home() {
 
         {/* Results */}
         {!results ? (
-          <div className="text-center py-12 text-white/20 text-sm">
+          <div className="text-center py-16 text-white/15 text-sm">
             Upload both data files to run backtest
           </div>
         ) : (
@@ -148,13 +217,13 @@ export default function Home() {
             <StatsGrid stats={results.stats} />
 
             {/* View Tabs */}
-            <div className="flex gap-0 mb-3.5 border-b border-white/[0.06]">
-              <ViewTabButton label="Equity Curve" active={activeView === 'chart'} onClick={() => setActiveView('chart')} />
+            <div className="flex gap-0 mb-4 border-b border-white/[0.06]">
+              <ViewTabButton label="Charts" active={activeView === 'chart'} onClick={() => setActiveView('chart')} />
               <ViewTabButton label={`Trade Log (${results.trades.length})`} active={activeView === 'log'} onClick={() => setActiveView('log')} />
               <ViewTabButton label="Debug Log" active={activeView === 'debug'} onClick={() => setActiveView('debug')} />
             </div>
 
-            {activeView === 'chart' && <EquityChart data={results.equity} />}
+            {activeView === 'chart' && <EquityChart equity={results.equity} dailyPnL={results.dailyPnL} />}
             {activeView === 'log' && <TradeLog trades={results.trades} />}
             {activeView === 'debug' && <DebugLog log={results.debugLog} />}
           </div>
@@ -166,7 +235,7 @@ export default function Home() {
 
 function Badge({ text }: { text: string }) {
   return (
-    <div className="text-[11px] text-white/35 px-2.5 py-1 bg-white/[0.03] rounded font-mono">
+    <div className="text-[10px] text-white/30 px-2 py-0.5 bg-white/[0.03] rounded font-mono">
       {text}
     </div>
   );
@@ -175,8 +244,8 @@ function Badge({ text }: { text: string }) {
 function ViewTabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
-      className={`px-4 py-1.5 bg-transparent border-none border-b-2 text-xs font-semibold cursor-pointer tracking-wide uppercase transition-all ${
-        active ? 'border-b-emerald-400 text-white/80' : 'border-b-transparent text-white/30'
+      className={`px-5 py-2 bg-transparent border-none border-b-2 text-xs font-semibold cursor-pointer tracking-wide uppercase transition-all ${
+        active ? 'border-b-emerald-400 text-white/80' : 'border-b-transparent text-white/25 hover:text-white/40'
       }`}
       onClick={onClick}
     >
