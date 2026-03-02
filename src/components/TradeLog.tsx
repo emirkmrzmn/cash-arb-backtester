@@ -69,7 +69,7 @@ export default function TradeLog({ trades, tradingDays }: TradeLogProps) {
           </thead>
           <tbody>
             {slice.map(day => {
-              const hasMultiple = day.trades.length > 1;
+              const hasTrades = day.trades.length > 0;
               const isExpanded = expanded.has(day.dateKey);
               const pnlColor = day.totalPnL > 0 ? 'text-emerald-400' : day.totalPnL < 0 ? 'text-red-400' : 'text-white/30';
               const dirColor = day.direction === 'LONG' ? 'text-emerald-400' : day.direction === 'SHORT' ? 'text-red-400' : 'text-white/20';
@@ -92,11 +92,11 @@ export default function TradeLog({ trades, tradingDays }: TradeLogProps) {
                 <Fragment key={day.dateKey}>
                   {/* Summary row */}
                   <tr
-                    className={`hover:bg-white/[0.02] transition-colors ${hasMultiple ? 'cursor-pointer' : ''}`}
-                    onClick={hasMultiple ? () => toggle(day.dateKey) : undefined}
+                    className="hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    onClick={() => toggle(day.dateKey)}
                   >
                     <td className="text-[11px] px-2 py-1.5 font-mono text-white/50 border-b border-white/[0.02]">
-                      {hasMultiple && <span className="text-white/25 mr-1">{isExpanded ? '▼' : '▶'}</span>}
+                      <span className="text-white/25 mr-1">{isExpanded ? '▼' : '▶'}</span>
                       {day.dateDisplay}
                     </td>
                     <td className="text-[10px] px-2 py-1.5 border-b border-white/[0.02]">
