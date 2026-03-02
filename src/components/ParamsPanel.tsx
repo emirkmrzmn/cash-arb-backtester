@@ -51,6 +51,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
       {/* Session Tabs */}
       <div className="flex mb-5">
         <button
+          type="button"
           className={`px-6 py-2.5 text-sm font-semibold border transition-all rounded-l-lg ${
             session === 'lunch'
               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
@@ -61,6 +62,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
           Lunch Session
         </button>
         <button
+          type="button"
           className={`px-6 py-2.5 text-sm font-semibold border border-l-0 transition-all rounded-r-lg ${
             session === 'night'
               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
@@ -192,6 +194,7 @@ function Toggle({ label, enabled, onToggle, sub, disabled }: { label: string; en
     <div className={`flex items-center gap-2.5 mb-2 ${disabled ? 'opacity-40' : ''}`}>
       <label className="text-xs text-white/45 w-[140px] shrink-0">{label}</label>
       <button
+        type="button"
         className={`relative w-9 h-5 rounded-full transition-colors border-none outline-none cursor-pointer shrink-0 ${
           enabled ? 'bg-emerald-500/50' : 'bg-white/[0.08]'
         } ${disabled ? 'cursor-not-allowed' : ''}`}
