@@ -143,9 +143,16 @@ export function runBacktestEngine(
       }
     }
 
-    // ── MAX DISTANCE FROM CASH (track across all session bars) ──
+    // ── MAX DISTANCE FROM CASH (night: 16:00–05:00 only, lunch: all session bars) ──
     let maxDist = 0;
-    sessionBars.forEach(b => {
+    let maxDistBars = sessionBars;
+    if (session === 'night') {
+      const nextCal = new Date(td);
+      nextCal.setDate(nextCal.getDate() + 1);
+      const maxDistCap = makeDateTime(nextCal, 5 * 60); // 05:00 next day
+      maxDistBars = sessionBars.filter(b => b.timestamp <= maxDistCap);
+    }
+    maxDistBars.forEach(b => {
       const distHigh = Math.abs(b.high - cashClose);
       const distLow = Math.abs(b.low - cashClose);
       maxDist = Math.max(maxDist, distHigh, distLow);
