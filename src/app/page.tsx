@@ -43,6 +43,7 @@ export default function Home() {
     tp3: LUNCH_DEFAULTS.tp3 as number | string,
     sl2: LUNCH_DEFAULTS.sl2 as number | string,
     sl3: LUNCH_DEFAULTS.sl3 as number | string,
+    oneSideOnly: false,
   });
 
   const [results, setResults] = useState<BacktestResult | null>(null);
@@ -118,6 +119,7 @@ export default function Home() {
       tp3: Number(params.tp3) || 0,
       sl2: Number(params.sl2) || 0,
       sl3: Number(params.sl3) || 0,
+      oneSideOnly: params.oneSideOnly,
     };
     const r = runBacktestEngine(session, backParams, filteredCash, ohlcData.barsByTradingDay, ohlcData.sortedTradingDays);
     setResults(r);
@@ -227,12 +229,12 @@ export default function Home() {
             {/* View Tabs */}
             <div className="flex gap-0 mb-4 border-b border-white/[0.06]">
               <ViewTabButton label="Charts" active={activeView === 'chart'} onClick={() => setActiveView('chart')} />
-              <ViewTabButton label={`Trade Log (${results.trades.length})`} active={activeView === 'log'} onClick={() => setActiveView('log')} />
+              <ViewTabButton label={`Trade Log (${results.tradingDays.length} days)`} active={activeView === 'log'} onClick={() => setActiveView('log')} />
               <ViewTabButton label="Debug Log" active={activeView === 'debug'} onClick={() => setActiveView('debug')} />
             </div>
 
             {activeView === 'chart' && <EquityChart equity={results.equity} dailyPnL={results.dailyPnL} />}
-            {activeView === 'log' && <TradeLog trades={results.trades} />}
+            {activeView === 'log' && <TradeLog trades={results.trades} tradingDays={results.tradingDays} />}
             {activeView === 'debug' && <DebugLog log={results.debugLog} />}
           </div>
         )}

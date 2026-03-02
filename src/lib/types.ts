@@ -23,7 +23,8 @@ export interface CashRef {
 }
 
 export interface Trade {
-  date: string;
+  dateKey: string;       // YYYY-MM-DD for sorting/grouping
+  date: string;          // DD/MM/YYYY for display
   direction: 'LONG' | 'SHORT';
   entryPrice: number;
   entryTime: string;
@@ -34,6 +35,13 @@ export interface Trade {
   cashRef: number;
   maxDistFromCash: number;
   tranche?: string;
+}
+
+export interface TradingDayInfo {
+  dateKey: string;
+  dateDisplay: string;
+  maxDist: number;
+  cashRef: number;
 }
 
 export interface EquityPoint {
@@ -65,6 +73,7 @@ export interface BacktestParams {
   tp3: number;
   sl2: number;
   sl3: number;
+  oneSideOnly: boolean;
 }
 
 export interface BacktestStats {
@@ -84,10 +93,8 @@ export interface BacktestStats {
   maxCW: number;
   noTradeDays: number;
   totalDays: number;
-  // Max distance from cash percentile stats
+  // Max distance from cash
   maxDistMedian: string;
-  maxDistP30: string;
-  maxDistP10: string;
   // Tranche entry counts
   e1Count: number;
   e2Count: number;
@@ -102,6 +109,7 @@ export interface BacktestResult {
   dailyPnL: DailyPnLPoint[];
   debugLog: string[];
   stats: BacktestStats;
+  tradingDays: TradingDayInfo[];
 }
 
 export type Session = 'lunch' | 'night';

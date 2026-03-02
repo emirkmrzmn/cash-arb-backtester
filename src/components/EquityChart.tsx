@@ -8,6 +8,12 @@ interface EquityChartProps {
   dailyPnL: DailyPnLPoint[];
 }
 
+function formatDateKey(dk: string): string {
+  // YYYY-MM-DD → DD/MM
+  const p = dk.split('-');
+  return p[2] + '/' + p[1];
+}
+
 export default function EquityChart({ equity, dailyPnL }: EquityChartProps) {
   return (
     <div className="space-y-4">
@@ -65,6 +71,7 @@ export default function EquityChart({ equity, dailyPnL }: EquityChartProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
               <XAxis
                 dataKey="date"
+                tickFormatter={formatDateKey}
                 tick={{ fill: 'rgba(255,255,255,0.15)', fontSize: 9 }}
                 stroke="rgba(255,255,255,0.06)"
                 interval={Math.max(0, Math.floor(dailyPnL.length / 15))}
@@ -83,9 +90,12 @@ export default function EquityChart({ equity, dailyPnL }: EquityChartProps) {
                   borderRadius: 8,
                   fontSize: 12,
                   fontFamily: 'monospace',
+                  color: '#e0e0e0',
                 }}
                 labelStyle={{ color: 'rgba(255,255,255,0.5)' }}
+                itemStyle={{ color: '#e0e0e0' }}
                 formatter={(value: unknown) => [`P&L: ${Number(value).toFixed(1)}`, '']}
+                labelFormatter={(label: unknown) => formatDateKey(String(label))}
               />
               <Bar dataKey="pnl" radius={[2, 2, 0, 0]}>
                 {dailyPnL.map((entry, index) => (

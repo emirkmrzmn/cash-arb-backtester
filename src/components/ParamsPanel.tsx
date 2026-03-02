@@ -22,6 +22,7 @@ interface ParamsPanelProps {
     tp3: number | string;
     sl2: number | string;
     sl3: number | string;
+    oneSideOnly: boolean;
   };
   onParamChange: (key: string, value: unknown) => void;
   onRun: () => void;
@@ -46,7 +47,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
   };
 
   return (
-    <div>
+    <form onSubmit={e => { e.preventDefault(); if (canRun) onRun(); }}>
       {/* Session Tabs */}
       <div className="flex mb-5">
         <button
@@ -129,6 +130,7 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
           </div>
 
           <Toggle label="Allow Re-entry" enabled={params.allowReentry} onToggle={() => onParamChange('allowReentry', !params.allowReentry)} sub="within same session" />
+          <Toggle label="One side only" enabled={params.oneSideOnly} onToggle={() => onParamChange('oneSideOnly', !params.oneSideOnly)} sub="no direction flip" />
 
           {/* Entry criteria summary */}
           <div className="mt-4 pt-3 border-t border-white/5">
@@ -144,13 +146,13 @@ export default function ParamsPanel({ session, onSessionChange, params, onParamC
 
       {/* Run Button */}
       <button
+        type="submit"
         className="px-7 py-2.5 bg-emerald-500 text-[#0f1117] rounded-lg text-sm font-bold cursor-pointer transition-all hover:bg-emerald-600 disabled:opacity-30 disabled:cursor-default mb-5"
-        onClick={onRun}
         disabled={!canRun}
       >
         Run Backtest
       </button>
-    </div>
+    </form>
   );
 }
 

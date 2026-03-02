@@ -1,4 +1,4 @@
-import { Bar, CashRef, BacktestParams, BacktestResult, Trade, EquityPoint, DailyPnLPoint, Session } from './types';
+import { Bar, CashRef, BacktestParams, BacktestResult, Trade, EquityPoint, DailyPnLPoint, TradingDayInfo, Session } from './types';
 import { dateKey, fmtDate, fmtDateTime, makeDateTime, findNextTradingDay, keyToDate } from './dateUtils';
 
 // ─── Tranche-based position for E1/E2/E3 ───
@@ -33,7 +33,7 @@ export function runBacktestEngine(
   sortedTradingDays: string[]
 ): BacktestResult {
   const { entryDev, tp, sl, noSL, entryEndMin, backstopMin, ambiguous, allowReentry,
-          enableE2, enableE3, entryDev2, entryDev3, tp2, tp3, sl2, sl3 } = params;
+          enableE2, enableE3, entryDev2, entryDev3, tp2, tp3, sl2, sl3, oneSideOnly } = params;
 
   // Cash lookup
   const cashMap: Record<string, number> = {};
@@ -53,6 +53,7 @@ export function runBacktestEngine(
   const dailyPnLMap: Record<string, number> = {};
   const debugLog: string[] = [];
   const allMaxDists: number[] = [];
+  const tradingDayInfos: TradingDayInfo[] = [];
 
   // Diagnostics
   debugLog.push('<span class="dbg-header">══ PARSE DIAGNOSTICS ══</span>');
@@ -92,6 +93,7 @@ export function runBacktestEngine(
     const tdBars = barsByTradingDay[k];
     if (!tdBars || !tdBars.length) {
       debugLog.push(fmtDate(td) + ' [' + k + ']: SKIP — no OHLC trading day');
+      tradingDayInfos.push({ dateKey: k, dateDisplay: fmtDate(td), maxDist: 0, cashRef: cashClose });
       return;
     }
 
@@ -104,6 +106,7 @@ export function runBacktestEngine(
       sessionBars = tdBars.filter(b => b.timestamp >= lunchStart && b.timestamp <= lunchEnd);
       if (sessionBars.length === 0) {
         debugLog.push(fmtDate(td) + ' [' + k + ']: SKIP — no bars in lunch window');
+        tradingDayInfos.push({ dateKey: k, dateDisplay: fmtDate(td), maxDist: 0, cashRef: cashClose });
         return;
       }
     } else {
@@ -121,6 +124,7 @@ export function runBacktestEngine(
       sessionBars.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
       if (sessionBars.length === 0) {
         debugLog.push(fmtDate(td) + ' [' + k + ']: SKIP — no bars in night window');
+        tradingDayInfos.push({ dateKey: k, dateDisplay: fmtDate(td), maxDist: 0, cashRef: cashClose });
         return;
       }
     }
@@ -148,6 +152,7 @@ export function runBacktestEngine(
     });
     maxDist = Math.round(maxDist * 10) / 10;
     allMaxDists.push(maxDist);
+    tradingDayInfos.push({ dateKey: k, dateDisplay: fmtDate(td), maxDist, cashRef: cashClose });
 
     // ── THRESHOLDS (multi-level for E1/E2/E3) ──
     const longE1 = cashClose - entryDev;
@@ -177,17 +182,7 @@ export function runBacktestEngine(
       let posDirection: 1 | -1 | null = null;
       let e1Triggered = false, e2Triggered = false, e3Triggered = false;
       let slTriggered = false; // once any SL fires, no more entries for the day
-
-      function closeAllTranches(exitPrice: number, exitTime: Date, reason: string) {
-        tranches.filter(t => !t.closed).forEach(t => {
-          const pnl = t.direction === 1 ? (exitPrice - t.entryPrice) : (t.entryPrice - exitPrice);
-          t.pnl = Math.round(pnl * 10) / 10;
-          t.exitPrice = Math.round(exitPrice * 10) / 10;
-          t.exitTime = exitTime;
-          t.exitReason = reason;
-          t.closed = true;
-        });
-      }
+      let sessionSide: 1 | -1 | null = null; // locks direction for one-side-only
 
       function closeTranche(t: Tranche, exitPrice: number, exitTime: Date, reason: string) {
         const pnl = t.direction === 1 ? (exitPrice - t.entryPrice) : (t.entryPrice - exitPrice);
@@ -202,17 +197,18 @@ export function runBacktestEngine(
         const bar = sessionBars[i];
         const isLast = i === sessionBars.length - 1;
         const inEntryWindow = bar.timestamp <= entryWindowEnd;
-        const openTranches = tranches.filter(t => !t.closed);
 
         // Check for new tranche entries (within entry window, blocked after any SL)
         if (inEntryWindow && !slTriggered) {
           if (!e1Triggered) {
-            if (bar.low <= longE1) {
+            if (bar.low <= longE1 && (!oneSideOnly || sessionSide === null || sessionSide === 1)) {
               posDirection = 1; e1Triggered = true;
+              if (sessionSide === null) sessionSide = 1;
               tranches.push({ level: 1, direction: 1, entryPrice: longE1, entryTime: bar.timestamp, tp, closed: false });
               debugLog.push('  <span class="dbg-entry">E1 LONG @ ' + longE1 + ' bar=' + fmtDateTime(bar.timestamp) + '</span>');
-            } else if (bar.high >= shortE1) {
+            } else if (bar.high >= shortE1 && (!oneSideOnly || sessionSide === null || sessionSide === -1)) {
               posDirection = -1; e1Triggered = true;
+              if (sessionSide === null) sessionSide = -1;
               tranches.push({ level: 1, direction: -1, entryPrice: shortE1, entryTime: bar.timestamp, tp, closed: false });
               debugLog.push('  <span class="dbg-entry">E1 SHORT @ ' + shortE1 + ' bar=' + fmtDateTime(bar.timestamp) + '</span>');
             }
@@ -298,6 +294,7 @@ export function runBacktestEngine(
       tranches.filter(t => t.closed).forEach(t => {
         const rounded = t.pnl!;
         trades.push({
+          dateKey: k,
           date: fmtDate(td),
           direction: t.direction === 1 ? 'LONG' : 'SHORT',
           entryPrice: t.entryPrice,
@@ -312,19 +309,20 @@ export function runBacktestEngine(
         });
         cumPnL += rounded;
         equity.push({ idx: trades.length, pnl: Math.round(cumPnL * 10) / 10, date: fmtDate(td) });
-        const dateStr = fmtDate(td);
-        dailyPnLMap[dateStr] = (dailyPnLMap[dateStr] || 0) + rounded;
+        dailyPnLMap[k] = (dailyPnLMap[k] || 0) + rounded;
       });
 
     } else {
       // ═══ SINGLE ENTRY MODE (original logic) ═══
       let position: { direction: 1 | -1; entryPrice: number; entryTime: Date } | null = null;
+      let sessionSide: 1 | -1 | null = null; // locks direction for one-side-only
 
       function closeTrade(exitPrice: number, exitTime: Date, reason: string) {
         const dir = position!.direction;
         const pnl = dir === 1 ? (exitPrice - position!.entryPrice) : (position!.entryPrice - exitPrice);
         const rounded = Math.round(pnl * 10) / 10;
         trades.push({
+          dateKey: k,
           date: fmtDate(td),
           direction: dir === 1 ? 'LONG' : 'SHORT',
           entryPrice: position!.entryPrice,
@@ -338,8 +336,7 @@ export function runBacktestEngine(
         });
         cumPnL += rounded;
         equity.push({ idx: trades.length, pnl: Math.round(cumPnL * 10) / 10, date: fmtDate(td) });
-        const dateStr = fmtDate(td);
-        dailyPnLMap[dateStr] = (dailyPnLMap[dateStr] || 0) + rounded;
+        dailyPnLMap[k] = (dailyPnLMap[k] || 0) + rounded;
         const cls = reason.startsWith('TP') ? 'dbg-exit-tp' : reason.startsWith('SL') ? 'dbg-exit-sl' : 'dbg-exit-time';
         debugLog.push('  <span class="' + cls + '">EXIT ' + reason + ' @ ' + (Math.round(exitPrice * 10) / 10) + ' pnl=' + (rounded > 0 ? '+' : '') + rounded + '</span>');
         position = null;
@@ -353,8 +350,13 @@ export function runBacktestEngine(
         if (!position) {
           if (!inEntryWindow) break;
           let entered = false, entryDir: 1 | -1 = 1, entryPx = 0;
-          if (bar.low <= longE1) { entryDir = 1; entryPx = longE1; entered = true; }
-          else if (bar.high >= shortE1) { entryDir = -1; entryPx = shortE1; entered = true; }
+          if (bar.low <= longE1 && (!oneSideOnly || sessionSide === null || sessionSide === 1)) {
+            entryDir = 1; entryPx = longE1; entered = true;
+            if (sessionSide === null) sessionSide = 1;
+          } else if (bar.high >= shortE1 && (!oneSideOnly || sessionSide === null || sessionSide === -1)) {
+            entryDir = -1; entryPx = shortE1; entered = true;
+            if (sessionSide === null) sessionSide = -1;
+          }
           if (!entered) continue;
 
           position = { direction: entryDir, entryPrice: entryPx, entryTime: bar.timestamp };
@@ -419,18 +421,16 @@ export function runBacktestEngine(
   st = 0;
   trades.forEach(t => { if (t.pnl > 0) { st++; if (st > maxCW) maxCW = st; } else st = 0; });
 
-  const tds = new Set(trades.map(t => t.date));
-  const noTrade = tradingDates.filter(td => !tds.has(fmtDate(td))).length;
+  const tradeDateKeys = new Set(trades.map(t => t.dateKey));
+  const noTrade = tradingDates.filter(td => !tradeDateKeys.has(dateKey(td))).length;
 
-  // Daily P&L
+  // Daily P&L (keyed by dateKey = YYYY-MM-DD, sorts correctly)
   const dailyPnL: DailyPnLPoint[] = Object.entries(dailyPnLMap)
     .map(([date, pnl]) => ({ date, pnl: Math.round(pnl * 10) / 10 }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // Max distance percentiles
   const maxDistMedian = percentile(allMaxDists, 50);
-  const maxDistP30 = percentile(allMaxDists, 30);
-  const maxDistP10 = percentile(allMaxDists, 10);
 
   // Tranche entry counts
   const e1Count = trades.filter(t => !t.tranche || t.tranche === 'E1').length;
@@ -442,6 +442,7 @@ export function runBacktestEngine(
     equity,
     dailyPnL,
     debugLog,
+    tradingDays: tradingDayInfos,
     stats: {
       totalTrades: n,
       wins: wins.length,
@@ -460,8 +461,6 @@ export function runBacktestEngine(
       noTradeDays: noTrade,
       totalDays: tradingDates.length,
       maxDistMedian: maxDistMedian.toFixed(1),
-      maxDistP30: maxDistP30.toFixed(1),
-      maxDistP10: maxDistP10.toFixed(1),
       e1Count,
       e2Count,
       e3Count,

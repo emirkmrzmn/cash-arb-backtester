@@ -27,11 +27,7 @@ export default function StatsGrid({ stats }: StatsGridProps) {
         <StatCard label="Avg Loss" value={stats.avgLoss} color="text-red-400/80" />
         <StatCard label="Max Consec L" value={String(stats.maxCL)} color={stats.maxCL >= 5 ? 'text-red-400' : 'text-white/60'} />
         <StatCard label="No-Trade Days" value={String(stats.noTradeDays)} color="text-white/60" sub={`of ${stats.totalDays}`} />
-        <StatCard label="Dist Median" value={stats.maxDistMedian} color="text-blue-400/80" sub="50% of sessions below" />
-        <StatCard label="Dist P30 / P10" value={`${stats.maxDistP30} / ${stats.maxDistP10}`} color="text-blue-400/60" sub="30% / 10% never this far" />
-      </div>
-      {/* Row 3: Trades Entered by tranche */}
-      <div className="grid grid-cols-6 gap-2">
+        <StatCard label="Dist Median" value={stats.maxDistMedian} color="text-blue-400/80" sub="max dist from cash" />
         <TrancheCard label="Trades Entered" e1={stats.e1Count} e2={stats.enableE2 ? stats.e2Count : null} e3={stats.enableE3 ? stats.e3Count : null} />
       </div>
     </div>
@@ -40,7 +36,7 @@ export default function StatsGrid({ stats }: StatsGridProps) {
 
 function TrancheCard({ label, e1, e2, e3 }: { label: string; e1: number; e2: number | null; e3: number | null }) {
   return (
-    <div className="rounded-lg p-3 border bg-white/[0.02] border-white/[0.04] col-span-2">
+    <div className="rounded-lg p-3 border bg-white/[0.02] border-white/[0.04]">
       <div className="text-[9px] text-white/30 uppercase tracking-wider font-semibold mb-2">{label}</div>
       <div className="flex gap-4">
         <div className="flex items-baseline gap-1.5">
