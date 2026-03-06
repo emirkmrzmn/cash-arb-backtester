@@ -14,7 +14,30 @@ export function excelSerialToUTC(serial: number): DateComponents {
   };
 }
 
-export function parseDateValue(v: unknown): DateComponents | null {
+export type DateOrder = 'MDY' | 'DMY';
+
+/**
+ * Auto-detect MM/DD vs DD/MM by scanning all date strings in a column.
+ * If any first-position value > 12, it must be DD/MM.
+ * If any second-position value > 12, it must be MM/DD.
+ * Falls back to MDY if ambiguous.
+ */
+export function detectDateOrder(values: unknown[]): DateOrder {
+  let firstMax = 0;
+  let secondMax = 0;
+  for (const v of values) {
+    if (typeof v !== 'string') continue;
+    const m = v.match(/(\d{1,2})[/\-](\d{1,2})[/\-]\d{2,4}/);
+    if (!m) continue;
+    firstMax = Math.max(firstMax, parseInt(m[1]));
+    secondMax = Math.max(secondMax, parseInt(m[2]));
+  }
+  if (firstMax > 12 && secondMax <= 12) return 'DMY';
+  if (secondMax > 12 && firstMax <= 12) return 'MDY';
+  return 'MDY';
+}
+
+export function parseDateValue(v: unknown, order: DateOrder = 'MDY'): DateComponents | null {
   if (typeof v === 'number') return excelSerialToUTC(v);
   if (v instanceof Date) {
     return {
@@ -26,17 +49,21 @@ export function parseDateValue(v: unknown): DateComponents | null {
     };
   }
   if (typeof v === 'string') {
-    let m = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/);
+    // ISO: YYYY-MM-DD or YYYY/MM/DD with optional time
+    let m = v.match(/(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
     if (m) {
-      let yr = parseInt(m[3]);
-      if (yr < 100) yr += 2000;
-      return { year: yr, month: parseInt(m[1]), day: parseInt(m[2]), hours: parseInt(m[4]), minutes: parseInt(m[5]) };
+      return { year: parseInt(m[1]), month: parseInt(m[2]), day: parseInt(m[3]), hours: parseInt(m[4] || '0'), minutes: parseInt(m[5] || '0') };
     }
-    m = v.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    // X/Y/YYYY or X-Y-YYYY with optional time — order-aware
+    m = v.match(/(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/);
     if (m) {
       let yr = parseInt(m[3]);
       if (yr < 100) yr += 2000;
-      return { year: yr, month: parseInt(m[1]), day: parseInt(m[2]), hours: 0, minutes: 0 };
+      const a = parseInt(m[1]);
+      const b = parseInt(m[2]);
+      const month = order === 'DMY' ? b : a;
+      const day = order === 'DMY' ? a : b;
+      return { year: yr, month, day, hours: parseInt(m[4] || '0'), minutes: parseInt(m[5] || '0') };
     }
     const d = new Date(v);
     if (!isNaN(d.getTime())) {

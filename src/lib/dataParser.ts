@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Bar, CashRef } from './types';
-import { parseDateValue, addHoursComp, makeLocal, getTradingDay, dateKey } from './dateUtils';
+import { parseDateValue, detectDateOrder, addHoursComp, makeLocal, getTradingDay, dateKey } from './dateUtils';
 
 export interface ParsedData {
   ohlcParsed: Bar[];
@@ -41,9 +41,11 @@ export function parseOhlc(raw: Record<string, unknown>[]): ParsedData {
   const lK = keys.find(k => /^low/i.test(k));
   const cK = keys.find(k => /^close/i.test(k));
 
+  const dateOrder = tsK ? detectDateOrder(raw.map(r => r[tsK])) : 'MDY';
+
   raw.forEach(row => {
     if (!tsK) return;
-    const comp = parseDateValue(row[tsK]);
+    const comp = parseDateValue(row[tsK], dateOrder);
     if (!comp) return;
     const utc8 = addHoursComp(comp, 8);
     const ts = makeLocal(utc8.year, utc8.month, utc8.day, utc8.hours, utc8.minutes);
@@ -85,9 +87,11 @@ export function parseCash(raw: Record<string, unknown>[]): ParsedCash {
   const lK = keys.find(k => /lunch/i.test(k));
   const nK = keys.find(k => /night/i.test(k));
 
+  const cashDateOrder = dK ? detectDateOrder(raw.map(r => r[dK])) : 'MDY';
+
   raw.forEach(row => {
     if (!dK) return;
-    const comp = parseDateValue(row[dK]);
+    const comp = parseDateValue(row[dK], cashDateOrder);
     if (!comp) return;
     const d = makeLocal(comp.year, comp.month, comp.day, 0, 0);
     cashParsed.push({
