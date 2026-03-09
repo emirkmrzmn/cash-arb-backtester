@@ -13,20 +13,48 @@ export interface ParsedCash {
 }
 
 export function readXlsx(file: File): Promise<Record<string, unknown>[]> {
+  const isCSV = /\.csv$/i.test(file.name);
+
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = (e) => {
       try {
-        const d = new Uint8Array(e.target!.result as ArrayBuffer);
-        const wb = XLSX.read(d, { type: 'array', cellDates: false });
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: null, raw: true });
-        resolve(json);
+        if (isCSV) {
+          // CSV: read as text to preserve raw date strings (avoid SheetJS locale-dependent date coercion)
+          const text = e.target!.result as string;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length < 2) { resolve([]); return; }
+          const headers = lines[0].split(',').map(h => h.trim());
+          const rows: Record<string, unknown>[] = [];
+          for (let i = 1; i < lines.length; i++) {
+            const vals = lines[i].split(',').map(v => v.trim());
+            const row: Record<string, unknown> = {};
+            headers.forEach((h, j) => {
+              const v = vals[j] ?? '';
+              // Keep date/time columns as strings, parse numbers for everything else
+              const num = Number(v);
+              row[h] = v === '' ? null : (isNaN(num) ? v : num);
+            });
+            rows.push(row);
+          }
+          resolve(rows);
+        } else {
+          // XLSX: use SheetJS (serial dates are unambiguous)
+          const d = new Uint8Array(e.target!.result as ArrayBuffer);
+          const wb = XLSX.read(d, { type: 'array', cellDates: false });
+          const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: null, raw: true });
+          resolve(json);
+        }
       } catch (err) {
         reject(err);
       }
     };
     r.onerror = reject;
-    r.readAsArrayBuffer(file);
+    if (isCSV) {
+      r.readAsText(file);
+    } else {
+      r.readAsArrayBuffer(file);
+    }
   });
 }
 
